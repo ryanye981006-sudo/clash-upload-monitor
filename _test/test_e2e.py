@@ -87,8 +87,9 @@ def run(args):
 print("\n--- 状态检查 ---")
 print(run(["status"]).strip())
 
+report_txt = run(["report", "--no-open"])
 print("\n--- 报告（近 1 小时）---")
-print(run(["report", "--no-open"]).strip())
+print(report_txt.strip())
 
 mock.terminate()
 try:
@@ -102,7 +103,17 @@ n_ev = conn.execute("SELECT COUNT(*) FROM events").fetchone()[0]
 n_sp = conn.execute("SELECT COUNT(*) FROM samples").fetchone()[0]
 tot = conn.execute("SELECT COALESCE(SUM(up),0) FROM events").fetchone()[0]
 uniq_host = conn.execute("SELECT COUNT(DISTINCT host) FROM events").fetchone()[0]
-uniq_proc = conn.execute("SELECT COUNT(DISTINCT process) FROM events").fetchone()[0]
+# 进程数要按「回退后的进程名」统计：Clash for Windows 的 process 字段为空，
+# 只有 processPath，直接 COUNT(DISTINCT process) 会得到 0，测不出真实情况
+def _bn(p):
+    if not p:
+        return ""
+    p = p.replace("\\", "/").rstrip("/")
+    return p.rsplit("/", 1)[-1]
+
+uniq_proc = len({(proc or _bn(path))
+                 for proc, path in conn.execute(
+                     "SELECT DISTINCT process, proc_path FROM events")})
 has_c4 = conn.execute(
     "SELECT COUNT(*) FROM events WHERE host='up.aliyuncs.com'").fetchone()[0]
 n_up = conn.execute("SELECT COUNT(*) FROM events WHERE up>0").fetchone()[0]
@@ -127,6 +138,13 @@ checks = [
     ("捕获到中途关闭的连接", has_c4 > 0, has_c4),
     ("有上传增量的事件", n_up > 0, n_up),
     ("HTML 报告渲染完整", html_ok, htmls[0] if htmls else "未生成"),
+    # process 为空、只有 processPath 时（Clash for Windows 的真实行为）
+    # 也必须能识别出进程名，否则整列会误报「未识别」
+    ("报告识别出 quark.exe", "quark.exe" in report_txt, "quark.exe" in report_txt),
+    ("报告识别出 ChatGPT.exe", "ChatGPT.exe" in report_txt,
+     "ChatGPT.exe" in report_txt),
+    ("报告无误报「未识别」", "(未识别)" not in report_txt,
+     "(未识别)" not in report_txt),
 ]
 ok = True
 for name, passed, val in checks:

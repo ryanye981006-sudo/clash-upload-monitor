@@ -279,6 +279,47 @@ def scan_listening_ports():
     return ports[:40]
 
 
+def nic_sent_rate(timeout=40):
+    """测量本机网卡的发送速率（字节/秒），用于交叉核对。
+
+    系统代理模式下，Clash 只能看到「遵守系统代理」的程序；不遵守的程序会直连
+    外网、完全绕过 Clash。把网卡速率与 Clash 速率对比，就能知道报告漏了多少。
+
+    返回 (bytes_per_sec, 网卡名) 或 (None, 失败原因)。
+    """
+    try:
+        out = subprocess.run(
+            ["typeperf", r"\Network Interface(*)\Bytes Sent/sec", "-sc", "2"],
+            capture_output=True, text=True, timeout=timeout,
+            encoding="gbk", errors="ignore").stdout
+    except Exception as e:
+        return None, "typeperf 不可用（%s）" % e
+
+    lines = [l for l in out.splitlines() if l.startswith('"')]
+    if len(lines) < 2:
+        return None, "typeperf 无有效输出"
+    header = [p.strip('"') for p in lines[0].split('","')]
+    data = [p.strip('"') for p in lines[-1].split('","')]
+
+    total = 0.0
+    buses = []
+    for i in range(1, min(len(data), len(header))):
+        if "loopback" in header[i].lower():
+            continue
+        try:
+            v = float(data[i])
+        except ValueError:
+            continue
+        if v > 0:
+            total += v
+            m = re.search(r"Network Interface\(([^)]+)\)", header[i])
+            buses.append((m.group(1) if m else header[i], v))
+    if not buses:
+        return None, "未发现活动的网卡"
+    buses.sort(key=lambda x: -x[1])
+    return total, buses[0][0]
+
+
 class ClashNotRunning(Exception):
     pass
 
@@ -351,10 +392,27 @@ CREATE TABLE IF NOT EXISTS meta (
 """
 
 
+def proc_name(process, proc_path):
+    """取得可读的进程名。
+
+    Clash for Windows 的 /connections 里 metadata.process 往往为空，只有
+    metadata.processPath 有值（实测 3500+ 事件中 process 全空、processPath 全有）；
+    而部分开源内核则相反。所以要两者兼容，否则报告会整列显示「未识别」。
+    """
+    if process:
+        return process
+    if not proc_path:
+        return ""
+    p = proc_path.replace("\\", "/").rstrip("/")
+    return p.rsplit("/", 1)[-1] if p else ""
+
+
 def db_connect():
     conn = sqlite3.connect(DB_PATH, timeout=20)
     conn.execute("PRAGMA journal_mode=WAL")      # 采样进程写 / 报告进程读并发
     conn.execute("PRAGMA synchronous=NORMAL")
+    # 注册到 SQLite，使历史数据也无需重采即可正确显示进程名
+    conn.create_function("procname", 2, proc_name)
     return conn
 
 
@@ -633,6 +691,47 @@ def show_status():
     except Exception as e:
         print("  读取数据库失败：%s" % e)
 
+    if ok:
+        check_coverage(host, port, secret)
+
+
+def check_coverage(host, port, secret):
+    """交叉核对：网卡实际发送速率 vs Clash 统计速率。
+
+    Clash 在系统代理模式下只看得见「遵守系统代理」的程序，其余程序直连外网、
+    绕过 Clash。两者的差值就是本工具无法归因的那部分上传。
+    """
+    print()
+    print("  网络交叉核对（本工具只能看到经过 Clash 的流量）")
+    try:
+        a0 = int(api_get(host, port, secret, "/connections").get("uploadTotal") or 0)
+        t0 = time.time()
+        nrate, nicname = nic_sent_rate()
+        a1 = int(api_get(host, port, secret, "/connections").get("uploadTotal") or 0)
+        dt = max(time.time() - t0, 0.01)
+        crate = (a1 - a0) / dt
+    except Exception as e:
+        print("    跳过（%s）" % e)
+        return
+
+    if nrate is None:
+        print("    跳过（%s）" % nicname)
+        return
+
+    print("    网卡发送速率 : %9s/s   %s" % (pretty_bytes(nrate), nicname[:38]))
+    print("    Clash 统计   : %9s/s" % pretty_bytes(crate))
+    if nrate > 1024:
+        pct = 100.0 * crate / nrate
+        print("    经代理占比   : %9.0f%%" % pct)
+        if crate < 0.6 * nrate:
+            print("    ⚠ 相当一部分上传不经过 Clash，这部分无法归因。常见原因：")
+            print("      · 程序使用 QUIC/UDP（HTTP/3、WebRTC）—— 系统代理一般不转发 UDP")
+            print("      · 程序不遵守系统代理，直连外网")
+            print("      解决：改用 TUN 模式，Clash 即可接管全部流量。")
+    print("    注：网卡速率含协议开销与重传，是上限参考值。判读方法——")
+    print("        同时对比「下载方向」（网卡接收 vs Clash 下载）：若下载方向")
+    print("        占比接近 100%，说明开销可忽略，上传方向的差距即为真实漏采。")
+
 
 # --------------------------------------------------------------------------
 # 报告
@@ -677,7 +776,7 @@ def gather(conn, since):
                 for r in conn.execute(sql, (since, limit)).fetchall()]
 
     out["by_process"] = top(
-        "SELECT COALESCE(NULLIF(process,''),'(未识别)') k,"
+        "SELECT COALESCE(NULLIF(procname(process, proc_path),''),'(未识别)') k,"
         " COALESCE(SUM(up),0), COALESCE(SUM(down),0)"
         " FROM events WHERE ts>=? GROUP BY k ORDER BY SUM(up) DESC LIMIT ?")
     out["by_host"] = top(
@@ -704,7 +803,7 @@ def gather(conn, since):
          int(r[4] or 0), str(r[5] or ""), float(r[6] or 0))
         for r in conn.execute(
             "SELECT COALESCE(host,''), COALESCE(ip,''),"
-            " COALESCE(NULLIF(process,''),'(未识别)'),"
+            " COALESCE(NULLIF(procname(process, proc_path),''),'(未识别)'),"
             " COALESCE(SUM(up),0), COALESCE(SUM(down),0),"
             " COALESCE(NULLIF(chain,''),'(直连)'), MAX(ts)"
             " FROM events WHERE ts>=? GROUP BY cid"
@@ -902,6 +1001,17 @@ def write_html(conn, since, d):
       归因覆盖率 &lt;100% 表示部分上传来自区间内已关闭、来不及观测的连接（Clash 不保留关闭连接的明细）；<br>
       覆盖率 &gt;100% 表示新建立的连接把其建立以来的累计上传一次性计入了当前区间。<br>
       采样时长越长，覆盖率越收敛。
+    </p>
+    <p class="note">
+      <strong>本报告只有经过 Clash 的流量。</strong>Clash 在系统代理模式下仅能看到
+      「遵守系统代理」的程序；不遵守的程序（部分网盘、IM、P2P 客户端）会直连外网并绕过
+      Clash，其上传不会出现在这里。如需覆盖全部流量，请启用 Clash 的 TUN 模式。
+      可用 <code>python monitor.py status</code> 查看「网卡发送速率 vs Clash 统计速率」，
+      两者差距即为未被归因的部分。
+    </p>
+    <p class="note">
+      进程名优先取 <code>metadata.process</code>；该字段为空时回退到
+      <code>metadata.processPath</code> 的文件名（Clash for Windows 常见情况）。
     </p>
   </section>
 </div>

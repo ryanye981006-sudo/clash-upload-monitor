@@ -66,7 +66,7 @@ Windows 用户也可以直接双击 `start.bat`（会自动定位 Python 解释�
 [1] 启动采样（后台常驻）     ← 双击后选这个，然后就别管了
 [2] 停止采样
 [3] 查看上传分布报告          ← 终端表格 + 自动打开 HTML 报告
-[4] 查看状态 / 连接诊断       ← 确认 Clash 是否连上、已采集多少点
+[4] 查看状态 / 连接诊断       ← 采样点统计 + 网卡交叉核对（看漏了多少）
 [5] 前台运行（调试用）        ← 可选，能实时看到采样心跳
 [0] 退出
 ```
@@ -183,8 +183,9 @@ python _test/test_port_change.py  # 模拟 Clash 重启换端口，验证自愈
 重新发现而不是一路失败到退出。
 
 `mock_clash.py` 会模拟一条长期上传大户、一条中途关闭的连接，以及略大于归因值的
-全局总量（用于验证覆盖率指标）。它的端口与 secret 从 `config.yaml` 读取，
-**仓库里不保存任何凭据**。
+全局总量（用于验证覆盖率指标）；元数据里**刻意混用**「有 `process`」与「只有
+`processPath`」两种情形，以覆盖 Clash for Windows 的真实行为。它的端口与 secret
+从 `config.yaml` 读取，**仓库里不保存任何凭据**。
 
 ## 已知限制
 
@@ -192,11 +193,42 @@ python _test/test_port_change.py  # 模拟 Clash 重启换端口，验证自愈
   「粗粒度分布」够用；要做精确计费请用专门的抓包工具。
 - **只在 TCP 层归因**。Clash 的 `/connections` 不含 UDP 明细，UDP 流量只体现在
   `uploadTotal` 里，会拉低覆盖率。
-- **归因到进程依赖 Clash 的能力**。Clash Premium 能识别进程；开源内核的
-  `process` 字段常为空，此时会落到「(未识别)」——但按域名归因仍然有效。
+- **归因到进程**：优先用 `metadata.process`；该字段为空时回退到
+  `metadata.processPath` 的文件名。Clash for Windows 实测 **`process` 全为空、
+  只有 `processPath`**，所以这个回退是必需的（见 `_test/mock_clash.py` 里
+  两种情形都有覆盖）。两者皆空时才显示「(未识别)」。
 - **数据库会增长**。15 秒间隔、几十条活跃连接的量级下，一天大约数十 MB。
   已内置 14 天保留策略。
 - 本工具只读取 Clash 的控制接口，**不修改任何 Clash 配置**。
+
+## 覆盖范围：它看不到什么
+
+这是使用前必须理解的一点。
+
+Clash 在**系统代理模式**下，只有「遵守系统代理」的程序会经过它。以下流量会被
+完全绕过，本工具统计不到：
+
+- 使用 **QUIC / UDP** 的程序（HTTP/3、WebRTC）—— 系统代理通常不转发 UDP
+- **不遵守系统代理**的程序（部分网盘、IM、P2P、游戏客户端）
+- 局域网内部的流量
+
+`python monitor.py status` 内置了**交叉核对**，会同时报告网卡发送速率与 Clash
+统计速率，两者的差距就是漏采的部分：
+
+```
+  网络交叉核对（本工具只能看到经过 Clash 的流量）
+    网卡发送速率 : 1.06 MB/s   Realtek RTL8852BE WiFi 6 ...
+    Clash 统计   : 491.91 KB/s
+    经代理占比   :        45%
+    ⚠ 相当一部分上传不经过 Clash，这部分无法归因。
+```
+
+**怎么判断这个差距是真实的漏采，而不是网卡开销？** 看下载方向：网卡接收速率
+与 Clash 下载速率若接近 1:1（实测可到 116%），说明协议开销可忽略，那么上传方向
+的差距就是真实漏采。
+
+**想让 Clash 接管全部流量，请启用 TUN 模式。** 开启后所有流量（含 UDP）都会
+经过 Clash，本工具的归因覆盖率会显著提升。
 
 ## 安全说明
 
@@ -239,5 +271,12 @@ Key design points:
   sampler auto-reconnects if the port changes mid-run.
 - **Coverage ratio as a first-class metric.** Connections that open and close between
   samples are invisible; the coverage ratio quantifies how much was missed.
+- **Process names fall back to `processPath`.** Clash for Windows leaves
+  `metadata.process` empty and only fills `processPath`, so the report would otherwise
+  show every row as "unidentified".
+- **A cross-check against the NIC.** In system-proxy mode, apps that ignore the proxy
+  or use QUIC/UDP bypass Clash entirely. `monitor.py status` compares the interface's
+  send rate with Clash's own counter so you can see how much is being missed. (Enable
+  TUN mode to capture everything.)
 
 MIT licensed.

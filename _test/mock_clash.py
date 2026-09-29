@@ -30,19 +30,29 @@ SECRET = os.environ.get("CLASH_MON_SECRET", _cfg_secret)
 PORT = int(os.environ.get("CLASH_MON_PORT", _cfg_port or 50876))
 T0 = None          # 从第一次 /connections 请求开始计时，方便反复测试
 
-# (id, host, ip, port, process, processPath, chain, rule, up_Bps, down_Bps, lifetime_s)
+# (id, host, ip, port, process, processPath, chain, rule, up_Bps, down_Bps,
+#  lifetime_s, emit_process)
+#
+# emit_process 刻意做成两种：
+#   Clash for Windows 实测 metadata.process 为空、只有 processPath；
+#   部分开源内核则直接给出 process。报告必须两者都能识别，
+#   否则整列会显示「未识别」。
 SPEC = [
     ("c1", "pan.quark.cn", "111.62.75.10", 443, "quark.exe",
-     r"D:\Apps\Quark\quark.exe", "DIRECT", "DomainSuffix", 210_000, 12_000, None),
+     r"D:\Apps\Quark\quark.exe", "DIRECT", "DomainSuffix", 210_000, 12_000,
+     None, False),
     ("c2", "ab.chatgpt.com", "104.18.32.20", 443, "ChatGPT.exe",
      r"C:\Users\me\AppData\Local\Programs\ChatGPT\ChatGPT.exe",
-     "Proxies[HK]", "DomainSuffix", 42_000, 8_000, None),
+     "Proxies[HK]", "DomainSuffix", 42_000, 8_000, None, False),
     ("c3", "cdn.modelscope.cn", "47.98.1.5", 443, "chrome.exe",
-     r"C:\Program Files\Google\Chrome\chrome.exe", "DIRECT", "GeoIP", 6_000, 900_000, None),
+     r"C:\Program Files\Google\Chrome\chrome.exe", "DIRECT", "GeoIP",
+     6_000, 900_000, None, True),
     ("c4", "up.aliyuncs.com", "118.31.2.9", 443, "chrome.exe",
-     r"C:\Program Files\Google\Chrome\chrome.exe", "DIRECT", "GeoIP", 150_000, 3_000, 18),
+     r"C:\Program Files\Google\Chrome\chrome.exe", "DIRECT", "GeoIP",
+     150_000, 3_000, 18, False),
     ("c5", "drive.quark.cn", "111.62.75.11", 443, "quark.exe",
-     r"D:\Apps\Quark\quark.exe", "DIRECT", "DomainSuffix", 95_000, 20_000, None),
+     r"D:\Apps\Quark\quark.exe", "DIRECT", "DomainSuffix", 95_000, 20_000,
+     None, False),
 ]
 
 
@@ -52,7 +62,8 @@ def snapshot():
         T0 = time.time()
     el = time.time() - T0
     conns, total_up, total_down = [], 0, 0
-    for (cid, host, ip, port, proc, ppath, chain, rule, ur, dr, life) in SPEC:
+    for (cid, host, ip, port, proc, ppath, chain, rule, ur, dr, life,
+         emit_proc) in SPEC:
         if life is not None and el > life:
             # 连接已关闭：其流量仍留在内核累计值里，但不再出现在 connections 中
             total_up += int(ur * life)
@@ -69,7 +80,8 @@ def snapshot():
             "metadata": {
                 "network": "tcp", "type": "HTTP", "host": host,
                 "destinationIP": ip, "destinationPort": str(port),
-                "process": proc, "processPath": ppath,
+                "process": proc if emit_proc else "",
+                "processPath": ppath,
                 "rule": rule, "chains": [chain],
             },
         })
