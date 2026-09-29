@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Clash 上传流量归因报告</title>
+<style>
+  :root{
+    --bg:#f6f7f9; --card:#ffffff; --ink:#1a1d21; --sub:#5c6470;
+    --line:#e4e7ec; --accent:#2563eb; --up:#e5484d; --down:#0d9488;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:14px/1.6 "Microsoft YaHei","PingFang SC","Helvetica Neue",Arial,sans-serif}
+  .wrap{max-width:960px;margin:0 auto;padding:28px 20px 60px}
+  h1{font-size:21px;margin:0 0 4px;letter-spacing:.2px}
+  .sub{color:var(--sub);font-size:13px;margin-bottom:22px}
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(158px,1fr));gap:12px;margin-bottom:24px}
+  .kpi{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+  .kpi .k{color:var(--sub);font-size:12px;margin-bottom:6px}
+  .kpi .v{font-size:19px;font-weight:600;font-variant-numeric:tabular-nums}
+  .kpi .v.up{color:var(--up)}
+  section{background:var(--card);border:1px solid var(--line);border-radius:10px;
+          padding:18px 20px;margin-bottom:16px}
+  h2{font-size:15px;margin:0 0 14px;padding-left:9px;border-left:3px solid var(--accent)}
+  .row{display:flex;align-items:center;gap:10px;margin:7px 0;font-size:13px}
+  .nm{width:210px;flex:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#333}
+  .tr{flex:1;background:#f0f2f5;border-radius:4px;height:16px;overflow:hidden}
+  .bar{height:100%;background:linear-gradient(90deg,#e5484d,#f97316);border-radius:4px}
+  .vl{width:132px;flex:none;text-align:right;font-variant-numeric:tabular-nums;color:var(--sub)}
+  .pc{display:inline-block;width:48px;color:#98a2b3;font-size:12px}
+  .hrow{display:flex;align-items:center;gap:8px;font-size:12px;margin:3px 0}
+  .hl{width:88px;flex:none;color:var(--sub);font-variant-numeric:tabular-nums}
+  .hb{background:linear-gradient(90deg,#2563eb,#60a5fa);height:12px;border-radius:3px}
+  .hv{color:var(--sub);font-variant-numeric:tabular-nums}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line)}
+  th{color:var(--sub);font-weight:500;font-size:12px}
+  td.num{font-variant-numeric:tabular-nums;color:var(--up);font-weight:600}
+  td.ts{color:#98a2b3;font-variant-numeric:tabular-nums}
+  .note{color:var(--sub);font-size:12px;line-height:1.8}
+  .empty{color:#98a2b3;font-size:13px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Clash 上传流量归因报告</h1>
+  <div class="sub">统计时段 2026-09-29 10:14:22 → 2026-09-29 10:14:49　·　跨度 0.01 小时　·　采样点 10 个</div>
+
+  <div class="kpis">
+    <div class="kpi"><div class="k">全局上传</div><div class="v up">12.25 MB</div></div>
+    <div class="kpi"><div class="k">归因上传</div><div class="v">11.24 MB</div></div>
+    <div class="kpi"><div class="k">归因覆盖率</div><div class="v">91.7%</div></div>
+    <div class="kpi"><div class="k">平均上速</div><div class="v">464.5 KB/s</div></div>
+  </div>
+
+  <section><h2>上传来源 · 按进程</h2><div class="chart"><div class="row"><div class="nm" title="quark.exe">quark.exe</div><div class="tr"><div class="bar" style="width:100.00%"></div></div><div class="vl">7.85 MB<span class="pc">69.9%</span></div></div>
+<div class="row"><div class="nm" title="chrome.exe">chrome.exe</div><div class="tr"><div class="bar" style="width:29.29%"></div></div><div class="vl">2.30 MB<span class="pc">20.5%</span></div></div>
+<div class="row"><div class="nm" title="ChatGPT.exe">ChatGPT.exe</div><div class="tr"><div class="bar" style="width:13.77%"></div></div><div class="vl">1.08 MB<span class="pc">9.6%</span></div></div></div></section>
+  <section><h2>上传去向 · 按域名</h2><div class="chart"><div class="row"><div class="nm" title="pan.quark.cn">pan.quark.cn</div><div class="tr"><div class="bar" style="width:100.00%"></div></div><div class="vl">5.41 MB<span class="pc">48.1%</span></div></div>
+<div class="row"><div class="nm" title="drive.quark.cn">drive.quark.cn</div><div class="tr"><div class="bar" style="width:45.24%"></div></div><div class="vl">2.45 MB<span class="pc">21.8%</span></div></div>
+<div class="row"><div class="nm" title="up.aliyuncs.com">up.aliyuncs.com</div><div class="tr"><div class="bar" style="width:39.68%"></div></div><div class="vl">2.15 MB<span class="pc">19.1%</span></div></div>
+<div class="row"><div class="nm" title="ab.chatgpt.com">ab.chatgpt.com</div><div class="tr"><div class="bar" style="width:20.00%"></div></div><div class="vl">1.08 MB<span class="pc">9.6%</span></div></div>
+<div class="row"><div class="nm" title="cdn.modelscope.cn">cdn.modelscope.cn</div><div class="tr"><div class="bar" style="width:2.86%"></div></div><div class="vl">158.22 KB<span class="pc">1.4%</span></div></div></div></section>
+  <section><h2>上传出口 · 按节点</h2><div class="chart"><div class="row"><div class="nm" title="DIRECT">DIRECT</div><div class="tr"><div class="bar" style="width:100.00%"></div></div><div class="vl">10.15 MB<span class="pc">90.4%</span></div></div>
+<div class="row"><div class="nm" title="Proxies[HK]">Proxies[HK]</div><div class="tr"><div class="bar" style="width:10.65%"></div></div><div class="vl">1.08 MB<span class="pc">9.6%</span></div></div></div></section>
+
+  <section>
+    <h2>上传趋势（按小时）</h2>
+    <div class="chart"><div class="hrow"><div class="hl">09-29 10:00</div><div class="hb" style="width:100.00%"></div><div class="hv">11.24 MB</div></div></div>
+  </section>
+
+  <section>
+    <h2>单条连接上传榜 Top 15</h2>
+    <table>
+      <thead><tr><th>目标</th><th>IP</th><th>进程</th><th>上传</th><th>出口</th><th>最后活跃</th></tr></thead>
+      <tbody><tr><td>pan.quark.cn</td><td>111.62.75.10</td><td>quark.exe</td><td class='num'>5.41 MB</td><td>DIRECT</td><td class='ts'>10:14:49</td></tr>
+<tr><td>drive.quark.cn</td><td>111.62.75.11</td><td>quark.exe</td><td class='num'>2.45 MB</td><td>DIRECT</td><td class='ts'>10:14:49</td></tr>
+<tr><td>up.aliyuncs.com</td><td>118.31.2.9</td><td>chrome.exe</td><td class='num'>2.15 MB</td><td>DIRECT</td><td class='ts'>10:14:37</td></tr>
+<tr><td>ab.chatgpt.com</td><td>104.18.32.20</td><td>ChatGPT.exe</td><td class='num'>1.08 MB</td><td>Proxies[HK]</td><td class='ts'>10:14:49</td></tr>
+<tr><td>cdn.modelscope.cn</td><td>47.98.1.5</td><td>chrome.exe</td><td class='num'>158.22 KB</td><td>DIRECT</td><td class='ts'>10:14:49</td></tr></tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>口径说明</h2>
+    <p class="note">
+      数据来自定时轮询 Clash <code>/connections</code> 并做差分采样（间隔 3 秒）。<br>
+      归因覆盖率 &lt;100% 表示部分上传来自区间内已关闭、来不及观测的连接（Clash 不保留关闭连接的明细）；<br>
+      覆盖率 &gt;100% 表示新建立的连接把其建立以来的累计上传一次性计入了当前区间。<br>
+      采样时长越长，覆盖率越收敛。
+    </p>
+  </section>
+</div>
+</body>
+</html>

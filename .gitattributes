@@ -1,0 +1,19 @@
+# 默认按文本处理并自动归一化行尾
+* text=auto
+
+# 批处理脚本必须保持 CRLF，否则 Windows 上 cmd 解析会出问题
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# 源码 / 文档统一 LF
+*.py   text eol=lf
+*.md   text eol=lf
+*.html text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
+
+# 二进制
+*.db   binary
+*.png  binary
+*.jpg  binary
+*.zip  binary
